@@ -101,7 +101,7 @@ static void *extend_heap(size_t words);
 
  /// @brief malloc 초기화 함수
  /// @return 성공 시 0, 실패 시 -1
- int mm_init(void)
+int mm_init(void)
 {
     // 초기 힙 영역을 4개의 워드로 요청 -> [padding][prologue header][prologue footer][epilogue header]
     if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1)
@@ -223,7 +223,7 @@ void *mm_malloc(size_t size)
     else // 8 byte 정렬된 블록 크기 계산
         asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE);
 
-        // 적절한 가용 블록을 가용 리스트에서 탐색
+    // 적절한 가용 블록을 가용 리스트에서 탐색
     if ((bp = find_fit(asize)) != NULL)
     {
         // 찾았다면 해당 위치에 블록을 핟당
