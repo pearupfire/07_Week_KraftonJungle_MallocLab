@@ -147,38 +147,45 @@ static void *extend_heap(size_t words)
     return coalesce(bp);
 }
 
+/// @brief 현재 가용 블록 bp를 기준으로 이전 / 다음 인접한 가용 블록과 병합 함수
+/// @param bp 현재 가용 블록 포인터
+/// @return 병합 된 가용 블록의 시작 포인터
 static void *coalesce(void *bp)
 {
-    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
-    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
-    size_t size = GET_SIZE(HDRP(bp));
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))); // 이전 블록 할당 상태 (이전 footer 에서 확인)
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp))); // 다음 블록 할당 상태 (다음 header 에서 확인)
+    size_t size = GET_SIZE(HDRP(bp)); // 현재 블록 크기 
 
+    // case 1 : 이전 다음 모두 할당 되었다면
     if (prev_alloc && next_alloc)
     {
-        return bp;
+        return bp; // 병합x
     }
+    // case 2 : 이전 할당, 다음 가용 -> 현재와 다음 블록 병합
     else if (prev_alloc && !next_alloc)
     {
-        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
-        PUT(HDRP(bp), PACK(size, 0));
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp))); // 현재 사이즈에 다음 블록 사이즈 누적
+        PUT(HDRP(bp), PACK(size, 0)); // header / footer 갱신
         PUT(FTRP(bp), PACK(size, 0));
     }
+    // case 3 : 이전 가용, 다음 할당 -> 이전과 현재 블록 병합 
     else if (!prev_alloc && next_alloc)
     { 
-        size += GET_SIZE(HDRP(PREV_BLKP(bp)));
-        PUT(FTRP(bp), PACK(size, 0));
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
-        bp = PREV_BLKP(bp);
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))); // 현재 사이즈에 이전 블록 사이즈 누적
+        PUT(FTRP(bp), PACK(size, 0)); // 현재 블록의 병합된 footer 갱신
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // 이전 블록의 header 에 병합된 정보 갱신
+        bp = PREV_BLKP(bp); // 병합된 블록의 시작 주소를 반환하기 위해 bp 갱신
     }
+    // case 4 : 이전 다음 모두 가용 -> 이전 현재 다음 블록 병합
     else
     {
-        size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
-        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp))); // 현재 사이즈에 이전과 다음 블록을 누적
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // 이전 블록의 header 에 병합 크기 갱신 
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0)); // 다음 블록의 footer 에 병합 크기 갱신
         bp = PREV_BLKP(bp);
     }
 
-    return bp;
+    return bp; // 병합된 가용 블록의 시작 포인터 반환
 }
 
 /*
@@ -199,61 +206,81 @@ static void *coalesce(void *bp)
 //     }
 // }
 
+/// @brief size 만큼 heap 에 메모리 블록을 할당하는 함수
+/// @param size payload에 핟당할 크기
+/// @return 할당된 블록의 포인터, 실패 시 null 반환
 void *mm_malloc(size_t size)
 {
-    size_t asize;
-    size_t extendsize;
-    char *bp;
+    size_t asize; // 조정된 블록 크기 
+    size_t extendsize; // 힙을 확장해야 할 경우 확장할 크기
+    char *bp; // 할당될 블록의 포인터
 
-    if (size == 0)
-        return NULL;
+    if (size == 0) // size가 0인 경우
+        return NULL; // NULL 반환
     
-    if (size <= DSIZE)
-        asize = 2 * DSIZE;
-    else
+    if (size <= DSIZE) // 요청한 size가 최소 블록 크기보다 작다면 (8 byte)
+        asize = 2 * DSIZE; // 전체 블록 크기를 16 byte로 설정 (최소 전체 블록의 크기는 16 byte, header 4, payload 8, footer 4)
+    else // 8 byte 정렬된 블록 크기 계산
         asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE);
-    
+
+        // 적절한 가용 블록을 가용 리스트에서 탐색
     if ((bp = find_fit(asize)) != NULL)
     {
+        // 찾았다면 해당 위치에 블록을 핟당
         place(bp, asize);
         return bp;
     }
 
+    // 찾지 못했다면 heap을 확장해야한다. (asize, CHUNKSIZE 중 큰 값 선택)
     extendsize = MAX(asize, CHUNKSIZE);
 
+    // heap을 확장하고 새로운 가용 블록을 생성
     if ((bp = extend_heap(extendsize / WSIZE)) == NULL)
-        return NULL;
-        
+        return NULL; // 실패시 NULL
+    
+    // 새로 받은 블록을 할당
     place(bp, asize);
 
-    return bp;
+    return bp; // 할당된 bp 반환
 }
 
+/// @brief first-fit 함수 (가용 리스트에서 asize 이상인 첫 가용 블록을 탐색)
+/// @param asize 할당하는 블록의 크기
+/// @return 조건에 맞는 bp 반환, 실패 시 NULL 반환
 static void *find_fit(size_t asize)
 {
     void *bp;
 
+    // 힙의 첫 블록부터 탐색
     for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+        // 현재 블록이 가용 상태이고 크기가 요청 크기보다 크다면
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
             return bp;
 
-    
+    // 찾지 못하면 NULL 반환
     return NULL;
 }
 
-
+/// @brief bp에 asize를 할당, 필요시 분할
+/// @param bp  가용 블록의 bp 
+/// @param asize 할당할 size 크기
 static void place(void *bp, size_t asize)
 {
-    size_t csize = GET_SIZE(HDRP(bp));
+    size_t csize = GET_SIZE(HDRP(bp)); // 현재 가용 블록의 전체 크기
 
+    // 16 byte 보다 (현재 - 요청크기) 보다 크다면
     if ((csize - asize) >= (2 * DSIZE))
     {
-        PUT(HDRP(bp), PACK(asize, 1));
+        // 요청한 크기 만큼의 블록을 할당
+        PUT(HDRP(bp), PACK(asize, 1)); // header와 footer 에 asize, 1 갱신
         PUT(FTRP(bp), PACK(asize, 1));
-        bp = NEXT_BLKP(bp);
-        PUT(HDRP(bp), PACK(csize - asize, 0));
+        
+        // 나머지 블록을 새로운 가용 블록으로 설정
+        bp = NEXT_BLKP(bp); // 다음 블록으로 이동
+        PUT(HDRP(bp), PACK(csize - asize, 0)); // header 와 footer에 나머지 크기, 0 갱신 
         PUT(FTRP(bp), PACK(csize - asize, 0));
     }
+    // 남는 공간이 작다면 분할하지 않고 할당
     else
     {
         PUT(HDRP(bp), PACK(csize, 1));
@@ -264,13 +291,17 @@ static void place(void *bp, size_t asize)
 /*
  * mm_free - Freeing a block does nothing.
  */
+
+/// @brief 블록을 해체하고 인접한 가용 블록과 병합 시도하는 함수
+/// @param bp 해제할 블록의 포인터
 void mm_free(void *bp)
 {
-    size_t size = GET_SIZE(HDRP(bp));
+    size_t size = GET_SIZE(HDRP(bp)); // header에서 현재 블록 크기를 가지고옴
 
-    PUT(HDRP(bp), PACK(size, 0));
+    PUT(HDRP(bp), PACK(size, 0)); // header / footer에 size, 0 가용 블록으로 갱신
     PUT(FTRP(bp), PACK(size, 0));
-    coalesce(bp);
+
+    coalesce(bp); // 인접 블록이 있다면 병합
 }
 
 /*
