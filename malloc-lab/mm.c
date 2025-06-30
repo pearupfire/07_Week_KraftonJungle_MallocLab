@@ -89,6 +89,7 @@ team_t team = {
 #define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
 
 static char *heap_listp;
+static char *last_bp = NULL;
 
 static void *find_fit(size_t asize);
 static void place(void *bp, size_t asize);
@@ -113,6 +114,7 @@ int mm_init(void)
     PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1)); // prologue footer
     PUT(heap_listp + (3 * WSIZE), PACK(0,1));      // epilogue haeder
     heap_listp += (2 * WSIZE); // 힙 포인터 prologue block의 payload 시작 위치로 이동
+    last_bp = heap_listp;
 
     // 초기 가용 블록을 만들기 위해 힙을 CHUNKSIZE 만큼 확장
     // CHUNKSUZE / WSIZE = 4096 / 4 = 1024 words
@@ -185,6 +187,7 @@ static void *coalesce(void *bp)
         bp = PREV_BLKP(bp);
     }
 
+    last_bp = bp;
     return bp; // 병합된 가용 블록의 시작 포인터 반환
 }
 
@@ -249,15 +252,41 @@ void *mm_malloc(size_t size)
 /// @return 조건에 맞는 bp 반환, 실패 시 NULL 반환
 static void *find_fit(size_t asize)
 {
-    void *bp;
+    // // first-fit bp
+    // void *bp; 
+    
+    // // 힙의 첫 블록부터 탐색
+    // for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    //     // 현재 블록이 가용 상태이고 크기가 요청 크기보다 크다면
+    //     if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+    //         return bp;
 
-    // 힙의 첫 블록부터 탐색
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
-        // 현재 블록이 가용 상태이고 크기가 요청 크기보다 크다면
+    // // 찾지 못하면 NULL 반환
+    // return NULL;
+
+    // next-fit bp 
+    void *bp = last_bp; 
+
+    // last_bp 부터 끝까지 순회
+    for (bp = last_bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    {
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        {
+            last_bp = bp;
             return bp;
+        }
+    }
 
-    // 찾지 못하면 NULL 반환
+    // 위에서 찾지 못하면 처음부터 last_bp까지 순회
+    for (bp = heap_listp; bp < last_bp; bp = NEXT_BLKP(bp))
+    {
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        {
+            last_bp = bp;
+            return bp;
+        }
+    }
+
     return NULL;
 }
 
