@@ -89,7 +89,7 @@ team_t team = {
 #define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
 
 static char *heap_listp;
-static char *last_bp = NULL;
+// static char *last_bp = NULL;
 
 static void *find_fit(size_t asize);
 static void place(void *bp, size_t asize);
@@ -114,7 +114,8 @@ int mm_init(void)
     PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1)); // prologue footer
     PUT(heap_listp + (3 * WSIZE), PACK(0,1));      // epilogue haeder
     heap_listp += (2 * WSIZE); // 힙 포인터 prologue block의 payload 시작 위치로 이동
-    last_bp = heap_listp;
+
+    // last_bp = heap_listp; // next-fit
 
     // 초기 가용 블록을 만들기 위해 힙을 CHUNKSIZE 만큼 확장
     // CHUNKSUZE / WSIZE = 4096 / 4 = 1024 words
@@ -187,7 +188,7 @@ static void *coalesce(void *bp)
         bp = PREV_BLKP(bp);
     }
 
-    last_bp = bp;
+    // last_bp = bp; // next-fit
     return bp; // 병합된 가용 블록의 시작 포인터 반환
 }
 
@@ -252,7 +253,7 @@ void *mm_malloc(size_t size)
 /// @return 조건에 맞는 bp 반환, 실패 시 NULL 반환
 static void *find_fit(size_t asize)
 {
-    // // first-fit bp
+    // // first-fit
     // void *bp; 
     
     // // 힙의 첫 블록부터 탐색
@@ -264,30 +265,63 @@ static void *find_fit(size_t asize)
     // // 찾지 못하면 NULL 반환
     // return NULL;
 
-    // next-fit bp 
-    void *bp = last_bp; 
 
-    // last_bp 부터 끝까지 순회
-    for (bp = last_bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+
+    // // next-fit
+    // void *bp = last_bp; 
+
+    // // last_bp 부터 끝까지 순회
+    // for (bp = last_bp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    // {
+    //     if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+    //     {
+    //         last_bp = bp;
+    //         return bp;
+    //     }
+    // }
+
+    // // 위에서 찾지 못하면 처음부터 last_bp까지 순회
+    // for (bp = heap_listp; bp < last_bp; bp = NEXT_BLKP(bp))
+    // {
+    //     if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+    //     {
+    //         last_bp = bp;
+    //         return bp;
+    //     }
+    // }
+
+    // return NULL;
+
+
+
+    // best_fit
+    void *bp;
+    void *best_bp = NULL;
+    size_t best_size = (size_t) - 1; // 초기 최대값 설정
+
+    // 처음부터 끝까지 순회
+    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
     {
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        // bsize = 현재 bp의 사이즈
+        size_t bsize = GET_SIZE(HDRP(bp));
+
+        // 할당되지 않았고, bsize >= asize 일때 (가용 리스트에 들어갈 수 있다면)
+        if (!GET_ALLOC(HDRP(bp)) && bsize >= asize)
         {
-            last_bp = bp;
-            return bp;
+            // 현재 사이즈가 best_size보다 작다면
+            if (bsize < best_size)
+            {
+                best_size = bsize; // size 와 bp 위치 갱신
+                best_bp = bp;
+                
+                // size가 같다면 중단 (best_case)
+                if (best_size == asize)
+                    break;
+            }
         }
     }
 
-    // 위에서 찾지 못하면 처음부터 last_bp까지 순회
-    for (bp = heap_listp; bp < last_bp; bp = NEXT_BLKP(bp))
-    {
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
-        {
-            last_bp = bp;
-            return bp;
-        }
-    }
-
-    return NULL;
+    return best_bp;
 }
 
 /// @brief bp에 asize를 할당, 필요시 분할
