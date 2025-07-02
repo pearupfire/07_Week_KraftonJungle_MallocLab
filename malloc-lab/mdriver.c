@@ -225,14 +225,14 @@ int main(int argc, char **argv)
 			exit(1);
 		}
 		else
-			printf("Team Name:%s\n", team.teamname);
+			printf("Team Name : KraftonJungle\n", team.teamname);
 		if ((*team.name1 == '\0') || (*team.id1 == '\0'))
 		{
 			printf("ERROR.  You must fill in all team member 1 fields!\n");
 			exit(1);
 		}
 		else
-			printf("Member 1 :%s:%s\n", team.name1, team.id1);
+			printf("Member : pearupfire\n", team.name1, team.id1);
 
 		if (((*team.name2 != '\0') && (*team.id2 == '\0')) ||
 			((*team.name2 == '\0') && (*team.id2 != '\0')))
