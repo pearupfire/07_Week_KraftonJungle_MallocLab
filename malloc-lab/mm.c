@@ -96,8 +96,8 @@ team_t team = {
 #define SUCC(bp) (*(void **)((char *)(bp) + WSIZE))
 
 static char *heap_listp;
-static char *free_listp; // <- 발표 준비
-static char *last_bp = NULL;
+static char *free_listp = NULL;
+static char *last_bp;
 
 static void *find_fit(size_t asize);
 static void place(void *bp, size_t asize);
@@ -314,17 +314,17 @@ void *mm_malloc(size_t size)
 /// @return 조건에 맞는 bp 반환, 실패 시 NULL 반환
 static void *find_fit(size_t asize)
 {
-    // first-fit
-    void *bp; 
+    // // first-fit
+    // void *bp; 
     
-    // 힙의 첫 블록부터 탐색
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
-        // 현재 블록이 가용 상태이고 크기가 요청 크기보다 크다면
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
-            return bp;
+    // // 힙의 첫 블록부터 탐색
+    // for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    //     // 현재 블록이 가용 상태이고 크기가 요청 크기보다 크다면
+    //     if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+    //         return bp;
 
-    // 찾지 못하면 NULL 반환
-    return NULL;
+    // // 찾지 못하면 NULL 반환
+    // return NULL;
 
 
     // // next-fit
@@ -354,34 +354,34 @@ static void *find_fit(size_t asize)
 
 
 
-    // // best_fit
-    // void *bp;
-    // void *best_bp = NULL;
-    // size_t best_size = (size_t) - 1; // 초기 최대값 설정
+    // best_fit
+    void *bp;
+    void *best_bp = NULL;
+    size_t best_size = (size_t) - 1; // 초기 최대값 설정
 
-    // // 처음부터 끝까지 순회
-    // for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
-    // {
-    //     // bsize = 현재 bp의 사이즈
-    //     size_t bsize = GET_SIZE(HDRP(bp));
+    // 처음부터 끝까지 순회
+    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    {
+        // bsize = 현재 bp의 사이즈
+        size_t bsize = GET_SIZE(HDRP(bp));
 
-    //     // 할당되지 않았고, bsize >= asize 일때 (가용 리스트에 들어갈 수 있다면)
-    //     if (!GET_ALLOC(HDRP(bp)) && bsize >= asize)
-    //     {
-    //         // 현재 사이즈가 best_size보다 작다면
-    //         if (bsize < best_size)
-    //         {
-    //             best_size = bsize; // size 와 bp 위치 갱신
-    //             best_bp = bp;
+        // 할당되지 않았고, bsize >= asize 일때 (가용 리스트에 들어갈 수 있다면)
+        if (!GET_ALLOC(HDRP(bp)) && bsize >= asize)
+        {
+            // 현재 사이즈가 best_size보다 작다면
+            if (bsize < best_size)
+            {
+                best_size = bsize; // size 와 bp 위치 갱신
+                best_bp = bp;
                 
-    //             // size가 같다면 중단 (best_case)
-    //             if (best_size == asize)
-    //                 break;
-    //         }
-    //     }
-    // }
+                // size가 같다면 중단 (best_case)
+                if (best_size == asize)
+                    break;
+            }
+        }
+    }
 
-    // return best_bp;
+    return best_bp;
 }
 
 /// @brief 묵시적 가용 리스트 bp에 asize를 할당, 필요시 분할
